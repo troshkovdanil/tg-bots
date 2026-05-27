@@ -127,6 +127,30 @@ Rules:
     return call_groq(prompt)
 
 
+def ask_groq_translate_ru_en(text: str) -> str:
+    prompt = f"""
+Translate this Russian text into natural English.
+
+Russian text:
+{text}
+
+Rules:
+- Preserve formatting exactly.
+- Preserve every emoji and symbol.
+- Preserve blank lines.
+- Preserve markdown-like structure.
+- Translate only Russian text.
+- Do not summarize.
+- Do not rewrite.
+- Do not shorten.
+- Return only the translated text.
+- Return only the English translation.
+- Do not explain.
+- Do not add comments.
+"""
+    return call_groq(prompt)
+
+
 def transcribe_with_groq(audio_path: str) -> str:
     with open(audio_path, "rb") as audio_file:
         transcription = client.audio.transcriptions.create(
@@ -143,22 +167,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "English Coach commands:\n\n"
         "/fix your sentence — natural spoken English\n"
-        "/fixa your sentence — academic/formal English\n\n"
+        "/fixa your sentence — academic/formal English\n"
+        "/trr русский текст — Russian to English translation\n\n"
         "You can also reply to a text or voice message with:\n"
-        "/fix or /fixa"
+        "/fix, /fixa or /trr"
     )
 
 
 async def extract_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     msg = update.message
 
-    # /fix some text
+    #logging.info("ARGS: %s", context.args)
+    #logging.info("MSG TEXT: %r", msg.text)
+    #logging.info("HAS REPLY: %s", bool(msg.reply_to_message))
+
+    # /fix some text, /fixa some text, /trr some text
     if context.args:
-        return " ".join(context.args).strip()
+        text = " ".join(context.args).strip()
+        logging.info("EXTRACTED FROM ARGS: %r", text)
+        return text
 
     replied = msg.reply_to_message
 
     if not replied:
+        logging.info("NO TEXT: no args and no reply")
         return ""
 
     logging.info(
@@ -167,14 +199,20 @@ async def extract_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> st
         bool(replied.caption),
         bool(replied.voice),
     )
+    logging.info("REPLY TEXT: %r", replied.text)
+    logging.info("REPLY CAPTION: %r", replied.caption)
 
     # reply to text
     if replied.text:
-        return replied.text.strip()
+        text = replied.text.strip()
+        logging.info("EXTRACTED FROM REPLY TEXT: %r", text)
+        return text
 
     # reply to caption
     if replied.caption:
-        return replied.caption.strip()
+        text = replied.caption.strip()
+        logging.info("EXTRACTED FROM REPLY CAPTION: %r", text)
+        return text
 
     # reply to voice
     if replied.voice:
@@ -208,15 +246,18 @@ async def process_fix(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
         await msg.reply_text(
             "Use:\n"
             "/fix your sentence\n"
-            "/fixa your sentence\n\n"
+            "/fixa your sentence\n"
+            "/trr русский текст\n\n"
             "or reply to a text/voice message with:\n"
-            "/fix or /fixa"
+            "/fix, /fixa or /trr"
         )
         return
 
     try:
         if mode == "academic":
             answer = ask_groq_academic(text)
+        elif mode == "translate_ru_en":
+            answer = ask_groq_translate_ru_en(text)
         else:
             answer = ask_groq_natural(text)
 
@@ -236,10 +277,15 @@ async def fixa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_fix(update, context, mode="academic")
 
 
+async def trr(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await process_fix(update, context, mode="translate_ru_en")
+
+
 app = Application.builder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("fix", fix))
 app.add_handler(CommandHandler("fixa", fixa))
+app.add_handler(CommandHandler("trr", trr))
 
 app.run_polling()
